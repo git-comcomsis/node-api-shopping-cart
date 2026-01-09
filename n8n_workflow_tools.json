@@ -1,0 +1,453 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://localhost:14420/menu",
+        "name": "get_menu",
+        "toolDescription": "Gets the complete restaurant catalog in hierarchical format. Use this when the user wants to see the menu.",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "id": "tool-menu",
+      "name": "Tool: Get Menu"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://localhost:14420/products",
+        "name": "list_products",
+        "toolDescription": "Lists all available products with their IDs and base prices. Useful for searching product IDs.",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [0, 200],
+      "id": "tool-products",
+      "name": "Tool: List Products"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'http://localhost:14420/products/' + $fromAI('product_id') + '/prices' }}",
+        "name": "get_product_prices",
+        "toolDescription": "Gets detailed prices and stock for a specific product. Requires 'product_id'.",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [0, 400],
+      "id": "tool-prices",
+      "name": "Tool: Get Prices"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://localhost:14420/inventory/catalogs",
+        "name": "get_inventory_catalogs",
+        "toolDescription": "Gets the list of warehouses (locations) and units of measure (UOMs).",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [300, 0],
+      "id": "tool-inv-catalogs",
+      "name": "Tool: Inv Catalogs"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:14420/inventory/transaction",
+        "name": "inventory_transaction",
+        "toolDescription": "Registers inventory movements (purchase, waste, transfer). Requires product_id, location_id, quantity, and type.",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "product_id",
+              "value": "={{ $fromAI('product_id') }}"
+            },
+            {
+              "name": "location_id",
+              "value": "={{ $fromAI('location_id') }}"
+            },
+            {
+              "name": "quantity",
+              "value": "={{ $fromAI('quantity') }}"
+            },
+            {
+              "name": "type",
+              "value": "={{ $fromAI('type') || 'purchase' }}"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [300, 200],
+      "id": "tool-inv-trans",
+      "name": "Tool: Inv Transaction"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'http://localhost:14420/inventory/stock/' + $fromAI('product_id') }}",
+        "name": "get_stock_detail",
+        "toolDescription": "Queries the exact stock of a product in each location (Store vs Warehouse). Requires 'product_id'.",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [300, 400],
+      "id": "tool-inv-stock",
+      "name": "Tool: Stock Detail"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://localhost:14420/inventory/restock-list",
+        "name": "get_restock_list",
+        "toolDescription": "Gets the list of products with low stock (reorder alert).",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [300, 600],
+      "id": "tool-inv-restock",
+      "name": "Tool: Restock List"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://localhost:14420/inventory/procurement",
+        "name": "get_procurement_plan",
+        "toolDescription": "Generates an automatic purchasing plan based on inventory deficit.",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [300, 800],
+      "id": "tool-inv-procure",
+      "name": "Tool: Procurement"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:14420/inventory/planning",
+        "name": "production_planning",
+        "toolDescription": "Calculates the ingredients needed to produce an X amount of products. Requires a JSON string in 'items_array'.",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "jsonParameters": true,
+        "bodyParametersJson": "={{ $fromAI('items_array') }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [300, 1000],
+      "id": "tool-inv-plan",
+      "name": "Tool: Planning"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://localhost:14420/sessions",
+        "name": "list_sessions",
+        "toolDescription": "Lists all active shopping sessions.",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [600, 0],
+      "id": "tool-sessions-list",
+      "name": "Tool: List Sessions"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:14420/sessions",
+        "name": "manage_session",
+        "toolDescription": "Creates or retrieves a shopping session. Requires 'user_id' (custom_code).",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "type",
+              "value": "guest"
+            },
+            {
+              "name": "custom_code",
+              "value": "={{ $fromAI('user_id') }}"
+            },
+            {
+              "name": "origin",
+              "value": "n8n_agent"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [600, 200],
+      "id": "tool-sessions-create",
+      "name": "Tool: Create Session"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'http://localhost:14420/cart/' + $fromAI('session_id') }}",
+        "name": "get_cart",
+        "toolDescription": "Gets the cart content for a session. Requires 'session_id'.",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [600, 400],
+      "id": "tool-cart-get",
+      "name": "Tool: Get Cart"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:14420/cart",
+        "name": "add_to_cart",
+        "toolDescription": "Adds a product to the cart. Requires session_id, product_id, and quantity.",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "session_id",
+              "value": "={{ $fromAI('session_id') }}"
+            },
+            {
+              "name": "product_id",
+              "value": "={{ $fromAI('product_id') }}"
+            },
+            {
+              "name": "quantity",
+              "value": "={{ $fromAI('quantity') }}"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [600, 600],
+      "id": "tool-cart-add",
+      "name": "Tool: Add to Cart"
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{ 'http://localhost:14420/cart/' + $fromAI('item_id') }}",
+        "name": "remove_from_cart",
+        "toolDescription": "Removes an item from the cart. Requires 'item_id' (not product_id).",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [600, 800],
+      "id": "tool-cart-del",
+      "name": "Tool: Remove Item"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:14420/orders",
+        "name": "checkout_order",
+        "toolDescription": "Finalizes the purchase (Checkout). Requires session_id and amount.",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "session_id",
+              "value": "={{ $fromAI('session_id') }}"
+            },
+            {
+              "name": "payment_method",
+              "value": "card"
+            },
+            {
+              "name": "received_amount",
+              "value": "={{ $fromAI('amount') }}"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [900, 0],
+      "id": "tool-orders-create",
+      "name": "Tool: Checkout"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'http://localhost:14420/orders/' + $fromAI('order_id') }}",
+        "name": "get_order_detail",
+        "toolDescription": "Gets the detail of a specific order. Requires 'order_id'.",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [900, 200],
+      "id": "tool-orders-get",
+      "name": "Tool: Order Detail"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'http://localhost:14420/orders/session/' + $fromAI('session_id') }}",
+        "name": "get_session_orders",
+        "toolDescription": "Gets the order history of a session. Requires 'session_id'.",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [900, 400],
+      "id": "tool-orders-session",
+      "name": "Tool: Session Orders"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'http://localhost:14420/finance/balance/' + $fromAI('session_id') }}",
+        "name": "get_finance_balance",
+        "toolDescription": "Gets the financial balance of a session. Requires 'session_id'.",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1,
+      "position": [900, 600],
+      "id": "tool-finance-bal",
+      "name": "Tool: Finance Balance"
+    }
+  ],
+  "connections": {}
+}
