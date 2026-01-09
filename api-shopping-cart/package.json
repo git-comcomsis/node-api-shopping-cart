@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "test": "jest --detectOpenHandles"
   },
   "keywords": ["api-shopping-cart", "comsis","nodejs api", "boscotron2000"],
   "author": "comsis.mx",
@@ -18,5 +19,9 @@
     "helmet": "^8.1.0",
     "morgan": "^1.10.1",
     "pg": "^8.11.3"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^6.3.3"
   }
 }

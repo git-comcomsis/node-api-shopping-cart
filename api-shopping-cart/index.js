@@ -992,8 +992,12 @@ app.use((req, res) => {
 // Google Cloud inyecta el puerto automáticamente en la variable PORT.
 const PORT = process.env.PORT || 14420;
 
-app.listen(PORT, () => {
-  console.log(`Servidor escuchando en el puerto ${PORT}`);
-  console.log(`Modo: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`Acceso: https://localhost:${PORT}/`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Servidor escuchando en el puerto ${PORT}`);
+    console.log(`Modo: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`Acceso: https://localhost:${PORT}/`);
+  });
+}
+
+module.exports = { app, pool };
