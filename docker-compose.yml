@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # Servicio de la API (Tu aplicación)
+  api:
+    build: .
+    container_name: shopping-cart-api
+    ports:
+      - "14420:14420"
+    environment:
+      - PORT=14420
+      - NODE_ENV=development
+      # Conexión a la DB (el host es el nombre del servicio 'db')
+      - DB_HOST=db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=shopping_cart_db
+      - DB_PORT=5432
+      - API_KEY=secret-api-key
+    depends_on:
+      - db
+    # En desarrollo local, montamos el volumen para ver cambios en vivo (opcional)
+    # y usamos nodemon si está en el script 'dev'
+    working_dir: /usr/src/app/api-shopping-cart
+    command: npm run dev
+    volumes:
+      - .:/usr/src/app
+      - /usr/src/app/api-shopping-cart/node_modules
+
+  # Servicio de Base de Datos (PostgreSQL)
+  db:
+    image: postgres:15-alpine
+    container_name: shopping-cart-db
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=shopping_cart_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+# Persistencia de datos de la DB
+volumes:
+  postgres_data:
