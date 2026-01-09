@@ -58,6 +58,9 @@ npm run dev
 
 # Modo producción
 npm start
+
+# Ejecutar Pruebas (Automated Testing)
+npm test
 ```
 
 ---
@@ -98,6 +101,7 @@ El sistema cuenta con un endpoint de auto-migración que crea o actualiza el esq
 ### 3. Carrito de Compras (Shopping Cart)
 *   `POST /sessions`: Inicia o recupera una sesión de usuario.
     *   *Body*: `{ type: "guest", custom_code: "usr_1", origin: "web" }`
+*   `GET /sessions`: Lista todas las sesiones activas e históricas.
 *   `GET /cart/:session_id`: Obtiene el contenido del carrito con detalles de productos.
 *   `POST /cart`: Agrega un item al carrito.
 *   `PUT /cart/:id`: Actualiza cantidad de un item.
@@ -147,6 +151,14 @@ Este módulo permite un control granular del stock más allá de una simple cant
     *   *Efecto*: Resta ingredientes (ej. carne, pan) y suma producto final (hamburguesa).
 
 #### Consultas
+*   `GET /inventory/restock-list`: **Reporte de Resurtido**. Devuelve productos cuyo stock está por debajo del punto de reorden (`reorder_point`), incluyendo detalles completos e imágenes.
+*   `POST /inventory/planning`: **Calculadora de Insumos**.
+    *   *Objetivo*: Estimar qué comprar para una lista de producción específica.
+    *   *Body*: `[{ "product_id": "uuid", "quantity": 10 }, ...]`
+    *   *Respuesta*: Desglose de ingredientes totales necesarios (ej. Total tomates, Total carne).
+*   `GET /inventory/procurement`: **Generador de Compras Automático**.
+    *   *Objetivo*: Calcular qué comprar para restablecer el inventario saludable.
+    *   *Lógica*: Analiza todos los productos bajos de stock, calcula el déficit, explota sus recetas y suma los ingredientes necesarios, restando lo que ya tienes de insumo.
 *   `GET /inventory/stock/:product_id`: Muestra el stock desglosado por ubicación (cuánto hay en almacén, cuánto en tienda, etc.).
 
 ### 6. Finanzas (Ledger)

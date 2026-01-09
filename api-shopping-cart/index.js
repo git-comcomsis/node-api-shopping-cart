@@ -54,11 +54,37 @@ app.use(cors(corsOptions));
 // Middleware para parsear JSON
 app.use(express.json());
 
+// 4. SEGURIDAD: Autenticación por Header (API Key)
+app.use((req, res, next) => {
+  // Permitir Health Check sin autenticación
+  if (req.path === '/') return next();
+  
+  // Permitir Preflight de CORS (Navegadores)
+  if (req.method === 'OPTIONS') return next();
+
+  const apiKey = req.get('x-api-key');
+  const validApiKey = process.env.API_KEY || 'secret-api-key';
+
+  if (apiKey && apiKey === validApiKey) {
+    next();
+  } else {
+    res.status(401).json({ error: 'Acceso no autorizado. API Key inválida o ausente.' });
+  }
+});
+
 // ---------------------------------------------------------
 // RUTA DE MIGRACIONES (Creación de Tablas)
 // ---------------------------------------------------------
 app.get('/migrations', async (req, res) => {
   try {
+    console.log({
+  user: process.env.DB_USER,
+  host: process.env.DB_HOST,
+  database: process.env.DB_NAME,
+  password: process.env.DB_PASSWORD,
+  port: process.env.DB_PORT,
+});
+    
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -102,7 +128,6 @@ app.get('/migrations', async (req, res) => {
       await client.query(`
         CREATE TABLE IF NOT EXISTS products (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(), 
-          category_id INTEGER REFERENCES categories(id) ON DELETE CASCADE,
           category_uuid UUID REFERENCES categories(id) ON DELETE CASCADE,
           name VARCHAR(255) NOT NULL,
           description TEXT,
@@ -667,9 +692,134 @@ app.get('/inventory/stock/:product_id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// 5. Consultas de Reabastecimiento y Planificación
+
+// A) Listado de Productos Resurtibles (Low Stock)
+app.get('/inventory/restock-list', async (req, res) => {
+  try {
+    // Unimos productos con precios y media para info completa
+    const result = await pool.query(`
+      SELECT 
+        p.*, 
+        pp.stock_quantity, 
+        pp.reorder_point, 
+        pp.min_stock_level,
+        pp.sku,
+        (SELECT url FROM product_media WHERE product_id = p.id LIMIT 1) as image
+      FROM products p
+      JOIN product_prices pp ON p.id = pp.product_id
+      WHERE pp.stock_quantity <= pp.reorder_point
+      ORDER BY pp.stock_quantity ASC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// B) Planificación de Producción (Calculadora de Insumos Manual)
+// Input: [{ product_id, quantity }]
+app.post('/inventory/planning', async (req, res) => {
+  const itemsToProduce = req.body; 
+  if (!Array.isArray(itemsToProduce)) {
+    return res.status(400).json({ error: 'El cuerpo debe ser un array de objetos { product_id, quantity }' });
+  }
+
+  try {
+    const requirements = {};
+
+    for (const item of itemsToProduce) {
+      // Obtener receta
+      const components = await pool.query('SELECT * FROM product_components WHERE parent_product_id = $1', [item.product_id]);
+
+      if (components.rows.length > 0) {
+        // Es un producto compuesto, sumamos sus ingredientes
+        for (const comp of components.rows) {
+          const totalNeeded = comp.quantity_required * item.quantity;
+          requirements[comp.child_product_id] = (requirements[comp.child_product_id] || 0) + totalNeeded;
+        }
+      } else {
+        // Es un producto base, se suma directo
+        requirements[item.product_id] = (requirements[item.product_id] || 0) + parseFloat(item.quantity);
+      }
+    }
+
+    // Enriquecer respuesta con nombres
+    const detailedReqs = [];
+    for (const [prodId, qty] of Object.entries(requirements)) {
+      const prodInfo = await pool.query('SELECT name, uom_id FROM products WHERE id = $1', [prodId]);
+      const uomRes = prodInfo.rows[0].uom_id ? await pool.query('SELECT abbreviation FROM uoms WHERE id = $1', [prodInfo.rows[0].uom_id]) : { rows: [] };
+      
+      detailedReqs.push({
+        product_id: prodId,
+        name: prodInfo.rows[0].name,
+        quantity_required: qty,
+        uom: uomRes.rows[0]?.abbreviation || ''
+      });
+    }
+
+    res.json({ planned_production: itemsToProduce, materials_required: detailedReqs });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// C) Cálculo Automático de Compras (Procurement)
+// Genera lista de compras para llevar todo el inventario al nivel de reorden
+app.get('/inventory/procurement', async (req, res) => {
+  try {
+    // 1. Identificar productos bajos de stock
+    const lowStockProds = await pool.query(`
+      SELECT p.id, p.name, pp.stock_quantity, pp.reorder_point 
+      FROM products p JOIN product_prices pp ON p.id = pp.product_id
+      WHERE pp.stock_quantity < pp.reorder_point
+    `);
+
+    const requirements = {};
+
+    // 2. Calcular déficit y explotar recetas
+    for (const prod of lowStockProds.rows) {
+      const deficit = prod.reorder_point - prod.stock_quantity;
+      const components = await pool.query('SELECT * FROM product_components WHERE parent_product_id = $1', [prod.id]);
+
+      if (components.rows.length > 0) {
+        for (const comp of components.rows) {
+          requirements[comp.child_product_id] = (requirements[comp.child_product_id] || 0) + (comp.quantity_required * deficit);
+        }
+      } else {
+        requirements[prod.id] = (requirements[prod.id] || 0) + deficit;
+      }
+    }
+
+    // 3. Formatear respuesta y comparar con stock actual de insumos
+    const shoppingList = [];
+    for (const [prodId, qty] of Object.entries(requirements)) {
+      const info = await pool.query(`
+        SELECT p.name, u.abbreviation as uom, pp.stock_quantity FROM products p
+        LEFT JOIN uoms u ON p.uom_id = u.id LEFT JOIN product_prices pp ON p.id = pp.product_id WHERE p.id = $1
+      `, [prodId]);
+      
+      const currentStock = parseFloat(info.rows[0].stock_quantity || 0);
+      shoppingList.push({
+        product_id: prodId, name: info.rows[0].name, uom: info.rows[0].uom,
+        gross_requirement: qty, current_stock: currentStock, suggested_purchase: Math.max(0, qty - currentStock)
+      });
+    }
+
+    res.json({ low_stock_products: lowStockProds.rows, procurement_summary: shoppingList });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ---------------------------------------------------------
 // CRUD: SESSIONS (Gestión de Sesiones)
 // ---------------------------------------------------------
+app.get('/sessions', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM sessions ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/sessions', async (req, res) => {
   const { type, custom_code, origin } = req.body;
   try {
@@ -873,6 +1023,17 @@ app.post('/orders', async (req, res) => {
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
+  }
+});
+
+// Obtener historial de órdenes por sesión
+app.get('/orders/session/:session_id', async (req, res) => {
+  const { session_id } = req.params;
+  try {
+    const result = await pool.query('SELECT * FROM orders WHERE session_id = $1 ORDER BY created_at DESC', [session_id]);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

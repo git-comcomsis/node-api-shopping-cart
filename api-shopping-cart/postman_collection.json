@@ -1,0 +1,408 @@
+{
+	"info": {
+		"_postman_id": "boscotron-api-wms-001",
+		"name": "API Shopping Cart & WMS",
+		"description": "Colección completa para probar el flujo de E-commerce, WMS y Finanzas.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "apikey",
+		"apikey": [
+			{
+				"key": "value",
+				"value": "{{api_key}}",
+				"type": "string"
+			},
+			{
+				"key": "key",
+				"value": "x-api-key",
+				"type": "string"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "01. Sistema",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/",
+							"host": ["{{base_url}}"],
+							"path": [""]
+						}
+					}
+				},
+				{
+					"name": "Ejecutar Migraciones (Reset DB)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/migrations",
+							"host": ["{{base_url}}"],
+							"path": ["migrations"]
+						},
+						"description": "Crea las tablas y datos semilla iniciales."
+					}
+				}
+			]
+		},
+		{
+			"name": "02. Catálogo",
+			"item": [
+				{
+					"name": "Obtener Menú Jerárquico",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/menu",
+							"host": ["{{base_url}}"],
+							"path": ["menu"]
+						}
+					}
+				},
+				{
+					"name": "Crear Categoría",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"column_identifier\": \"col-food\",\n    \"title\": \"Hamburguesas Gourmet\",\n    \"header_image\": \"/img/burger_bg.jpg\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/categories",
+							"host": ["{{base_url}}"],
+							"path": ["categories"]
+						}
+					}
+				},
+				{
+					"name": "Crear Producto (Hamburguesa)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"category_id\": \"{{category_id}}\",\n    \"name\": \"Hamburguesa Clásica\",\n    \"description\": \"Carne 100% Sirloin\",\n    \"detail\": \"Incluye papas\",\n    \"price\": 150.00,\n    \"stock\": 0,\n    \"product_type\": \"finished\",\n    \"image\": \"/img/burger.jpg\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/products",
+							"host": ["{{base_url}}"],
+							"path": ["products"]
+						},
+						"description": "Recuerda reemplazar {{category_id}} con un ID real obtenido de 'Crear Categoría'."
+					}
+				},
+				{
+					"name": "Listar Productos",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/products",
+							"host": ["{{base_url}}"],
+							"path": ["products"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "03. Inventario (WMS)",
+			"item": [
+				{
+					"name": "Ver Catálogos (Ubicaciones y UOMs)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/inventory/catalogs",
+							"host": ["{{base_url}}"],
+							"path": ["inventory", "catalogs"]
+						}
+					}
+				},
+				{
+					"name": "Transacción: Compra (Entrada)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"product_id\": \"{{product_id}}\",\n    \"location_id\": \"{{warehouse_id}}\",\n    \"quantity\": 100,\n    \"type\": \"purchase\",\n    \"notes\": \"Compra inicial proveedor\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/inventory/transaction",
+							"host": ["{{base_url}}"],
+							"path": ["inventory", "transaction"]
+						},
+						"description": "Ingresa stock al Almacén General."
+					}
+				},
+				{
+					"name": "Transacción: Transferencia (Almacén -> Tienda)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"product_id\": \"{{product_id}}\",\n    \"location_id\": \"{{warehouse_id}}\",\n    \"to_location_id\": \"{{store_id}}\",\n    \"quantity\": 20,\n    \"type\": \"transfer\",\n    \"notes\": \"Resurtido diario\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/inventory/transaction",
+							"host": ["{{base_url}}"],
+							"path": ["inventory", "transaction"]
+						}
+					}
+				},
+				{
+					"name": "Reporte: Productos Resurtibles",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/inventory/restock-list",
+							"host": ["{{base_url}}"],
+							"path": ["inventory", "restock-list"]
+						}
+					}
+				},
+				{
+					"name": "Calculadora: Planificación (Qué necesito para X)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "[\n    {\n        \"product_id\": \"{{product_id}}\",\n        \"quantity\": 10\n    }\n]"
+						},
+						"url": {
+							"raw": "{{base_url}}/inventory/planning",
+							"host": ["{{base_url}}"],
+							"path": ["inventory", "planning"]
+						}
+					}
+				},
+				{
+					"name": "Calculadora: Compras Automáticas (Procurement)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/inventory/procurement",
+							"host": ["{{base_url}}"],
+							"path": ["inventory", "procurement"]
+						}
+					}
+				},
+				{
+					"name": "Consultar Stock por Producto",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/inventory/stock/{{product_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["inventory", "stock", "{{product_id}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "04. Flujo de Venta",
+			"item": [
+				{
+					"name": "1. Iniciar Sesión",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"type\": \"guest\",\n    \"custom_code\": \"cliente_postman_01\",\n    \"origin\": \"postman\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/sessions",
+							"host": ["{{base_url}}"],
+							"path": ["sessions"]
+						}
+					}
+				},
+				{
+					"name": "Listar Sesiones",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/sessions",
+							"host": ["{{base_url}}"],
+							"path": ["sessions"]
+						}
+					}
+				},
+				{
+					"name": "2. Agregar al Carrito",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"session_id\": \"{{session_id}}\",\n    \"product_id\": \"{{product_id}}\",\n    \"quantity\": 2\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/cart",
+							"host": ["{{base_url}}"],
+							"path": ["cart"]
+						}
+					}
+				},
+				{
+					"name": "3. Ver Carrito",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/cart/{{session_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["cart", "{{session_id}}"]
+						}
+					}
+				},
+				{
+					"name": "4. Checkout (Crear Orden)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"session_id\": \"{{session_id}}\",\n    \"payment_method\": \"card\",\n    \"received_amount\": 300.00\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/orders",
+							"host": ["{{base_url}}"],
+							"path": ["orders"]
+						},
+						"description": "Esto crea la orden, descuenta inventario y registra el ingreso."
+					}
+				},
+				{
+					"name": "5. Ver Orden",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/orders/{{order_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["orders", "{{order_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Listar Ordenes por Sesión",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/orders/session/{{session_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["orders", "session", "{{session_id}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "05. Finanzas",
+			"item": [
+				{
+					"name": "Ver Balance de Sesión",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/finance/balance/{{session_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["finance", "balance", "{{session_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Historial de Transacciones",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/finance/history/{{session_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["finance", "history", "{{session_id}}"]
+						}
+					}
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:14420",
+			"type": "string"
+		},
+		{
+			"key": "category_id",
+			"value": "uuid-de-categoria",
+			"type": "string"
+		},
+		{
+			"key": "product_id",
+			"value": "uuid-de-producto",
+			"type": "string"
+		},
+		{
+			"key": "session_id",
+			"value": "uuid-de-sesion",
+			"type": "string"
+		},
+		{
+			"key": "order_id",
+			"value": "uuid-de-orden",
+			"type": "string"
+		},
+		{
+			"key": "warehouse_id",
+			"value": "uuid-almacen-general",
+			"type": "string"
+		},
+		{
+			"key": "store_id",
+			"value": "uuid-tienda-principal",
+			"type": "string"
+		},
+		{
+			"key": "api_key",
+			"value": "secret-api-key",
+			"type": "string"
+		}
+	]
+}

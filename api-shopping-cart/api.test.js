@@ -7,11 +7,12 @@ describe('Flujo Completo de Venta (E2E)', () => {
   let burgerId;
   let sessionId;
   let orderId;
+  const API_KEY = 'secret-api-key';
   
   // Configuración inicial: Asegurar que existan catálogos base
   beforeAll(async () => {
-    // Ejecutamos la migración para asegurar tablas
-    await request(app).get('/migrations');
+    // Ejecutamos la migración para asegurar tablas (con Auth)
+    await request(app).get('/migrations').set('x-api-key', API_KEY);
   });
 
   // Cerrar conexión a DB al finalizar
@@ -32,7 +33,7 @@ describe('Flujo Completo de Venta (E2E)', () => {
       column_identifier: 'col-test',
       title: 'Menú Testing',
       header_image: '/img/test.jpg'
-    });
+    }).set('x-api-key', API_KEY);
     expect(res.statusCode).toEqual(201);
     expect(res.body).toHaveProperty('id');
     categoryId = res.body.id;
@@ -48,7 +49,7 @@ describe('Flujo Completo de Venta (E2E)', () => {
       stock: 0, // Empezamos sin stock
       product_type: 'finished',
       uom_id: null // Opcional si no tenemos el ID a mano
-    });
+    }).set('x-api-key', API_KEY);
     expect(res.statusCode).toEqual(201);
     burgerId = res.body.id;
   });
@@ -56,7 +57,7 @@ describe('Flujo Completo de Venta (E2E)', () => {
   // 4. Abastecer Inventario (WMS)
   test('POST /inventory/transaction - Ingresar Stock', async () => {
     // Obtenemos ID del almacén (asumimos que la migración creó 'Almacén General')
-    const catalogs = await request(app).get('/inventory/catalogs');
+    const catalogs = await request(app).get('/inventory/catalogs').set('x-api-key', API_KEY);
     const warehouse = catalogs.body.locations.find(l => l.type === 'warehouse');
     const store = catalogs.body.locations.find(l => l.type === 'store');
 
@@ -69,7 +70,7 @@ describe('Flujo Completo de Venta (E2E)', () => {
       quantity: 50,
       type: 'purchase',
       notes: 'Stock inicial Jest'
-    });
+    }).set('x-api-key', API_KEY);
     expect(resPurchase.statusCode).toEqual(200);
 
     // 2. Transferencia a Tienda (para poder vender)
@@ -79,7 +80,7 @@ describe('Flujo Completo de Venta (E2E)', () => {
       to_location_id: store.id,
       quantity: 10,
       type: 'transfer'
-    });
+    }).set('x-api-key', API_KEY);
     expect(resTransfer.statusCode).toEqual(200);
   });
 
@@ -89,7 +90,7 @@ describe('Flujo Completo de Venta (E2E)', () => {
       type: 'guest',
       custom_code: `user_test_${Date.now()}`,
       origin: 'jest_runner'
-    });
+    }).set('x-api-key', API_KEY);
     expect(res.statusCode).toEqual(200);
     sessionId = res.body.id;
   });
@@ -100,7 +101,7 @@ describe('Flujo Completo de Venta (E2E)', () => {
       session_id: sessionId,
       product_id: burgerId,
       quantity: 2
-    });
+    }).set('x-api-key', API_KEY);
     expect(res.statusCode).toEqual(201);
     expect(res.body.quantity).toEqual(2);
   });
@@ -111,7 +112,7 @@ describe('Flujo Completo de Venta (E2E)', () => {
       session_id: sessionId,
       payment_method: 'card',
       received_amount: 300.00
-    });
+    }).set('x-api-key', API_KEY);
     
     expect(res.statusCode).toEqual(201);
     expect(res.body).toHaveProperty('order_id');
@@ -119,9 +120,18 @@ describe('Flujo Completo de Venta (E2E)', () => {
     orderId = res.body.order_id;
   });
 
+  // 7.1 Listar Ordenes por Sesión
+  test('GET /orders/session/:session_id - Listar Ordenes', async () => {
+    const res = await request(app).get(`/orders/session/${sessionId}`).set('x-api-key', API_KEY);
+    expect(res.statusCode).toEqual(200);
+    expect(Array.isArray(res.body)).toBeTruthy();
+    expect(res.body.length).toBeGreaterThan(0);
+    expect(res.body[0].id).toEqual(orderId);
+  });
+
   // 8. Verificar Inventario Post-Venta
   test('GET /inventory/stock/:id - Verificar descuento de stock', async () => {
-    const res = await request(app).get(`/inventory/stock/${burgerId}`);
+    const res = await request(app).get(`/inventory/stock/${burgerId}`).set('x-api-key', API_KEY);
     
     // Buscamos el stock en la tienda
     const storeStock = res.body.find(s => s.location_type === 'store');
@@ -133,7 +143,7 @@ describe('Flujo Completo de Venta (E2E)', () => {
 
   // 9. Verificar Finanzas
   test('GET /finance/balance/:id - Verificar ingreso en Ledger', async () => {
-    const res = await request(app).get(`/finance/balance/${sessionId}`);
+    const res = await request(app).get(`/finance/balance/${sessionId}`).set('x-api-key', API_KEY);
     
     expect(parseFloat(res.body.total_income)).toEqual(300.00);
   });
@@ -146,7 +156,7 @@ describe('Flujo Completo de Venta (E2E)', () => {
     
     // Primero borramos items de orden para evitar FK constraint si no es cascada fuerte
     // Pero como definimos ON DELETE CASCADE en las migraciones, debería funcionar.
-    const res = await request(app).delete(`/products/${burgerId}`);
+    const res = await request(app).delete(`/products/${burgerId}`).set('x-api-key', API_KEY);
     // Si falla por FK, no importa tanto en test dev, pero idealmente limpiamos.
     if (res.statusCode === 200) {
         expect(res.body.message).toContain('eliminado');
