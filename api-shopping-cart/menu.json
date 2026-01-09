@@ -1,0 +1,102 @@
+[
+  {
+    "id": "columna-1",
+    "categories": [
+      {
+        "title": "Cafés de Especialidad",
+        "headerImage": "/images/fondo_001.jpg",
+        "items": [
+          {
+            "id": "espresso",
+            "name": "Espresso Doble",
+            "description": "Intenso, con notas a chocolate amargo.",
+            "detail": "Una extracción perfecta de 60ml, ideal para despertar los sentidos con su cuerpo denso y crema dorada.",
+            "price": 45,
+            "image": "/images/fondo_001.jpg",
+            "options": [
+              {
+                "type": "radio",
+                "label": "Nivel de Azúcar",
+                "name": "sugar_espresso",
+                "choices": [
+                  {"value": "sin", "label": "Sin Azúcar", "checked": true},
+                  {"value": "poca", "label": "Poca Azúcar"},
+                  {"value": "mucha", "label": "Mucha Azúcar"}
+                ]
+              }
+            ]
+          },
+          {
+            "id": "flatwhite",
+            "name": "Flat White",
+            "description": "Doble shot con leche texturizada fina.",
+            "detail": "Equilibrio perfecto entre café intenso y leche sedosa, con una capa fina de microespuma.",
+            "price": 55,
+            "image": "/capturas/flatwhite.jpg",
+            "options": [
+              {
+                "type": "radio",
+                "label": "Nivel de Azúcar",
+                "name": "sugar_flatwhite",
+                "choices": [
+                  {"value": "sin", "label": "Sin Azúcar", "checked": true},
+                  {"value": "poca", "label": "Poca Azúcar"},
+                  {"value": "mucha", "label": "Mucha Azúcar"}
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "columna-2",
+    "categories": [
+      {
+        "title": "Platillos",
+        "headerImage": "/images/fondo_001.jpg",
+        "items": [
+          {
+            "id": "burger",
+            "name": "Hamburguesa con queso",
+            "description": "Carne jugosa estilo BBQ.",
+            "detail": "150g de carne selecta, queso fundido y pan artesanal.",
+            "price": 85,
+            "image": "/images/fondo_001.jpg",
+            "options": [
+              {
+                "type": "checkbox",
+                "label": "Aderezos y Verduras",
+                "name": "burger_toppings",
+                "choices": [
+                  {"value": "mayonesa", "label": "Mayonesa", "checked": true},
+                  {"value": "mostaza", "label": "Mostaza", "checked": true},
+                  {"value": "catsup", "label": "Catsup", "checked": true},
+                  {"value": "lechuga", "label": "Lechuga", "checked": true},
+                  {"value": "jitomate", "label": "Jitomate", "checked": true},
+                  {"value": "cebolla", "label": "Cebolla", "checked": true}
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "title": "Acompañamientos",
+        "headerImage": "/images/fondo_001.jpg",
+        "items": [
+          {
+            "id": "tarta",
+            "name": "Tarta de Queso",
+            "description": "Estilo vasco, cremosa y tostada.",
+            "detail": "Suave, cremosa y con ese toque tostado característico. El acompañamiento ideal.",
+            "price": 85,
+            "image": "/images/fondo_001.jpg",
+            "options": []
+          }
+        ]
+      }
+    ]
+  }
+]
