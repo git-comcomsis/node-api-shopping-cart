@@ -1,0 +1,465 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "url": "http://localhost:14420/menu",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "uuid-menu",
+      "name": "Get Menu (Frontend)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [0, 0],
+      "notes": "Obtiene el catálogo completo en formato jerárquico (Columnas > Categorías > Items)."
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:14420/products",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "uuid-products",
+      "name": "List Products",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [0, 200],
+      "notes": "Lista plana de todos los productos con ID, nombre y precio."
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:14420/products/{{$json.product_id}}/prices",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "uuid-prices",
+      "name": "Get Product Prices",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [0, 400],
+      "notes": "Obtiene detalles de precios y stock total de un producto específico."
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:14420/inventory/catalogs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "uuid-inv-catalogs",
+      "name": "Get Inventory Catalogs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [300, 0],
+      "notes": "Lista las ubicaciones (Almacenes, Tiendas) y Unidades de Medida (UOMs)."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:14420/inventory/transaction",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "product_id",
+              "value": "{{$json.product_id}}"
+            },
+            {
+              "name": "location_id",
+              "value": "{{$json.location_id}}"
+            },
+            {
+              "name": "quantity",
+              "value": "{{$json.quantity}}"
+            },
+            {
+              "name": "type",
+              "value": "purchase"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "uuid-inv-trans",
+      "name": "Inventory Transaction",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [300, 200],
+      "notes": "Registra entradas (purchase), salidas (waste) o transferencias de stock."
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:14420/inventory/stock/{{$json.product_id}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "uuid-inv-stock",
+      "name": "Get Stock Detail",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [300, 400],
+      "notes": "Muestra cuánto stock hay exactamente en cada ubicación (Tienda vs Almacén)."
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:14420/inventory/restock-list",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "uuid-inv-restock",
+      "name": "Get Restock List",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [300, 600],
+      "notes": "Reporte de productos con stock bajo (menor al punto de reorden)."
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:14420/inventory/procurement",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "uuid-inv-procure",
+      "name": "Get Procurement Plan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [300, 800],
+      "notes": "Calcula automáticamente qué comprar (ingredientes) para reabastecer el inventario."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:14420/inventory/planning",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{$json.items_array}}",
+        "options": {}
+      },
+      "id": "uuid-inv-plan",
+      "name": "Production Planning",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [300, 1000],
+      "notes": "Calculadora: ¿Qué ingredientes necesito para producir X cantidad de productos?"
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:14420/sessions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "uuid-sessions-list",
+      "name": "List Sessions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [600, 0],
+      "notes": "Lista todas las sesiones de compra activas e históricas."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:14420/sessions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "type",
+              "value": "guest"
+            },
+            {
+              "name": "custom_code",
+              "value": "{{$json.user_id}}"
+            },
+            {
+              "name": "origin",
+              "value": "n8n_agent"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "uuid-sessions-create",
+      "name": "Create/Get Session",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [600, 200],
+      "notes": "Crea o recupera una sesión de compra para un usuario."
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:14420/cart/{{$json.session_id}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "uuid-cart-get",
+      "name": "Get Cart",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [600, 400],
+      "notes": "Obtiene el contenido actual del carrito de una sesión."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:14420/cart",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "session_id",
+              "value": "{{$json.session_id}}"
+            },
+            {
+              "name": "product_id",
+              "value": "{{$json.product_id}}"
+            },
+            {
+              "name": "quantity",
+              "value": "{{$json.quantity}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "uuid-cart-add",
+      "name": "Add to Cart",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [600, 600],
+      "notes": "Agrega un producto al carrito de compras."
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "http://localhost:14420/cart/{{$json.item_id}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "uuid-cart-del",
+      "name": "Remove from Cart",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [600, 800],
+      "notes": "Elimina un item específico del carrito."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:14420/orders",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "session_id",
+              "value": "{{$json.session_id}}"
+            },
+            {
+              "name": "payment_method",
+              "value": "card"
+            },
+            {
+              "name": "received_amount",
+              "value": "{{$json.amount}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "uuid-orders-create",
+      "name": "Checkout (Create Order)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 0],
+      "notes": "Finaliza la compra: Crea orden, descuenta inventario y registra finanzas."
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:14420/orders/{{$json.order_id}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "uuid-orders-get",
+      "name": "Get Order Detail",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 200],
+      "notes": "Obtiene el detalle completo de una orden específica."
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:14420/orders/session/{{$json.session_id}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "uuid-orders-session",
+      "name": "Get Session Orders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 400],
+      "notes": "Historial de compras de una sesión."
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:14420/finance/balance/{{$json.session_id}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "secret-api-key"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "uuid-finance-bal",
+      "name": "Get Finance Balance",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 600],
+      "notes": "Obtiene el balance financiero (deuda/crédito) de una sesión."
+    }
+  ],
+  "connections": {}
+}
