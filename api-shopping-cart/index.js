@@ -68,7 +68,7 @@ app.get('/migrations', async (req, res) => {
 
       // Limpieza para recrear estructura (SOLO PARA DESARROLLO INICIAL)
       // En producción, usarías ALTER TABLE en lugar de DROP
-      await client.query('DROP TABLE IF EXISTS ledger, order_items, orders, cart_items, sessions, product_media, product_prices, products, categories CASCADE');
+      await client.query('DROP TABLE IF EXISTS inventory_ledger, product_components, locations, uoms, ledger, order_items, orders, cart_items, sessions, product_media, product_prices, products, categories CASCADE');
 
       // 1. Tabla Categories
       await client.query(`
@@ -84,6 +84,20 @@ app.get('/migrations', async (req, res) => {
         );
       `);
 
+      // 1.1 Tabla UOMs (Unidades de Medida) - NUEVA
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS uoms (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          name VARCHAR(50) NOT NULL, -- Kilogramo, Pieza, Caja, Litro
+          abbreviation VARCHAR(10) NOT NULL, -- kg, pz, cja, lt
+          created_at BIGINT DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
+        );
+        -- Insertar UOMs base por defecto
+        INSERT INTO uoms (name, abbreviation) VALUES 
+        ('Pieza', 'pz'), ('Kilogramo', 'kg'), ('Litro', 'lt'), ('Caja', 'cja'), ('Paquete', 'paq'), ('Licencia Digital', 'key')
+        ON CONFLICT DO NOTHING;
+      `);
+
       // 2. Tabla Products
       await client.query(`
         CREATE TABLE IF NOT EXISTS products (
@@ -93,12 +107,26 @@ app.get('/migrations', async (req, res) => {
           name VARCHAR(255) NOT NULL,
           description TEXT,
           detail TEXT,
+          product_type VARCHAR(50) DEFAULT 'finished', -- raw_material (ingrediente), finished (venta), digital, service
+          uom_id UUID REFERENCES uoms(id), -- Unidad base del producto
+          digital_data TEXT, -- Para licencias o claves estáticas
           options JSONB DEFAULT '[]',
           status VARCHAR(50) DEFAULT 'active',
           status_sys VARCHAR(50) DEFAULT 'system',
           created_at BIGINT DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT,
           updated_at BIGINT DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT,
           UNIQUE(category_uuid, name)
+        );
+      `);
+
+      // 2.1 Tabla Product Components (Recetas / Conversiones) - NUEVA
+      // Define qué ingredientes componen un producto o cuántas unidades tiene un paquete
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS product_components (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          parent_product_id UUID REFERENCES products(id) ON DELETE CASCADE, -- El producto final (ej. Hamburguesa)
+          child_product_id UUID REFERENCES products(id), -- El ingrediente (ej. Carne)
+          quantity_required NUMERIC(10, 4) NOT NULL -- Cuánto se necesita (ej. 1 pz o 0.150 kg)
         );
       `);
 
@@ -133,7 +161,7 @@ app.get('/migrations', async (req, res) => {
           store_price NUMERIC(10, 2) DEFAULT 0,
           public_price NUMERIC(10, 2) NOT NULL, -- Precio principal de venta
           published_price NUMERIC(10, 2), -- Precio tachado/oferta
-          stock_quantity INTEGER DEFAULT 0,
+          stock_quantity NUMERIC(10, 4) DEFAULT 0, -- Ahora es decimal para soportar Kilos/Litros
           is_backorder BOOLEAN DEFAULT FALSE,
           type VARCHAR(50) DEFAULT 'physical', -- physical, digital
           min_stock_level INTEGER DEFAULT 5, -- Alerta MVP
@@ -217,10 +245,44 @@ app.get('/migrations', async (req, res) => {
         );
       `);
 
+      // 10. Tabla Locations (Ubicaciones Físicas y Digitales) - NUEVA
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS locations (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          name VARCHAR(100) NOT NULL, -- Almacén Central, Tienda 1, Merma, Nube
+          type VARCHAR(50) NOT NULL, -- warehouse, store, display, waste, digital, cedis
+          address TEXT,
+          is_virtual BOOLEAN DEFAULT FALSE,
+          created_at BIGINT DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
+        );
+        -- Insertar ubicaciones base
+        INSERT INTO locations (name, type, is_virtual) VALUES 
+        ('Almacén General', 'warehouse', false),
+        ('Tienda Principal', 'store', false),
+        ('Exhibición', 'display', false),
+        ('Mermas/Desperdicio', 'waste', false),
+        ('Bóveda Digital', 'digital', true)
+        ON CONFLICT DO NOTHING;
+      `);
+
+      // 11. Tabla Inventory Ledger (Libro de Inventario - Kardex) - NUEVA
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS inventory_ledger (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          product_id UUID REFERENCES products(id),
+          location_id UUID REFERENCES locations(id),
+          quantity NUMERIC(10, 4) NOT NULL, -- Positivo (entrada) o Negativo (salida)
+          transaction_type VARCHAR(50) NOT NULL, -- purchase, sale, transfer, adjustment, production, conversion
+          reference_id UUID, -- ID de orden, ID de transferencia, etc.
+          notes TEXT,
+          created_at BIGINT DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
+        );
+      `);
+
       await client.query('COMMIT');
       res.status(200).json({ 
-        message: 'Migración completada. Sistema Contable (Ledger) y Órdenes actualizado.',
-        tables: ['categories', 'products', 'product_media', 'product_prices', 'sessions', 'cart_items', 'orders', 'order_items', 'ledger']
+        message: 'Migración completada. Sistema WMS (Inventarios Avanzados) configurado.',
+        tables: ['categories', 'products', 'uoms', 'product_components', 'locations', 'inventory_ledger', 'orders', 'ledger']
       });
     } catch (e) {
       await client.query('ROLLBACK');
@@ -366,7 +428,7 @@ app.get('/products', async (req, res) => {
 // Crear un producto (Transacción Compleja: Producto + Precio + Media)
 // Respeta la entrada estilo menu.json: { name, price, image, category_id, ... }
 app.post('/products', async (req, res) => {
-  const { category_id, name, description, detail, price, image, options, sku, stock } = req.body;
+  const { category_id, name, description, detail, price, image, options, sku, stock, product_type, uom_id, digital_data } = req.body;
   
   const client = await pool.connect();
   try {
@@ -374,17 +436,17 @@ app.post('/products', async (req, res) => {
 
     // 1. Insertar Producto Base
     const prodRes = await client.query(
-      `INSERT INTO products (category_uuid, name, description, detail, options) 
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [category_id, name, description, detail, JSON.stringify(options || [])]
+      `INSERT INTO products (category_uuid, name, description, detail, options, product_type, uom_id, digital_data) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [category_id, name, description, detail, JSON.stringify(options || []), product_type || 'finished', uom_id, digital_data]
     );
     const newProduct = prodRes.rows[0];
 
     // 2. Insertar Precio (Inventario)
     await client.query(
-      `INSERT INTO product_prices (product_id, public_price, sku, stock_quantity) 
-       VALUES ($1, $2, $3, $4)`,
-      [newProduct.id, price || 0, sku || '', stock || 0]
+      `INSERT INTO product_prices (product_id, public_price, sku, stock_quantity, type) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [newProduct.id, price || 0, sku || '', stock || 0, product_type === 'digital' ? 'digital' : 'physical']
     );
 
     // 3. Insertar Media (Imagen)
@@ -445,6 +507,162 @@ app.get('/products/:id/prices', async (req, res) => {
 app.get('/products/:id/media', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM product_media WHERE product_id = $1', [req.params.id]);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ---------------------------------------------------------
+// CRUD: INVENTARIOS AVANZADOS (WMS)
+// ---------------------------------------------------------
+
+// 1. Obtener Catálogos (UOMs y Ubicaciones)
+app.get('/inventory/catalogs', async (req, res) => {
+  try {
+    const uoms = await pool.query('SELECT * FROM uoms');
+    const locations = await pool.query('SELECT * FROM locations');
+    res.json({ uoms: uoms.rows, locations: locations.rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// 2. Registrar Movimiento de Inventario (Entrada/Salida/Transferencia)
+// Este endpoint actualiza el Libro de Inventario y recalcula el stock total
+app.post('/inventory/transaction', async (req, res) => {
+  const { product_id, location_id, quantity, type, notes, to_location_id } = req.body;
+  // type: 'purchase' (entrada), 'sale' (salida), 'waste' (salida), 'transfer' (movimiento), 'adjustment'
+  
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Validar producto
+    const prodCheck = await client.query('SELECT * FROM products WHERE id = $1', [product_id]);
+    if (prodCheck.rows.length === 0) throw new Error('Producto no encontrado');
+
+    // Lógica según tipo
+    if (type === 'transfer' && to_location_id) {
+      // Salida de origen
+      await client.query(`
+        INSERT INTO inventory_ledger (product_id, location_id, quantity, transaction_type, notes)
+        VALUES ($1, $2, $3, 'transfer_out', $4)
+      `, [product_id, location_id, -Math.abs(quantity), `Transferencia a ${to_location_id}`]);
+      
+      // Entrada a destino
+      await client.query(`
+        INSERT INTO inventory_ledger (product_id, location_id, quantity, transaction_type, notes)
+        VALUES ($1, $2, $3, 'transfer_in', $4)
+      `, [product_id, to_location_id, Math.abs(quantity), `Transferencia desde ${location_id}`]);
+
+    } else {
+      // Movimiento simple (Compra, Venta, Merma)
+      // Si es venta o merma, quantity debe ser negativo. Si es compra, positivo.
+      // Aquí forzamos el signo según el tipo para facilitar la API
+      let finalQty = parseFloat(quantity);
+      if (['sale', 'waste', 'usage'].includes(type)) {
+        finalQty = -Math.abs(finalQty);
+      } else {
+        finalQty = Math.abs(finalQty);
+      }
+
+      await client.query(`
+        INSERT INTO inventory_ledger (product_id, location_id, quantity, transaction_type, notes)
+        VALUES ($1, $2, $3, $4, $5)
+      `, [product_id, location_id, finalQty, type, notes]);
+    }
+
+    // Actualizar el stock total cacheado en product_prices (Suma de todas las ubicaciones)
+    // Nota: En un sistema real, podrías querer excluir ubicaciones como 'waste' o 'display' de la venta online.
+    await client.query(`
+      UPDATE product_prices 
+      SET stock_quantity = (
+        SELECT COALESCE(SUM(quantity), 0) FROM inventory_ledger WHERE product_id = $1
+      )
+      WHERE product_id = $1
+    `, [product_id]);
+
+    await client.query('COMMIT');
+    res.json({ message: 'Movimiento de inventario registrado exitosamente.' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// 3. Conversión / Producción (Ej. Carne Paquete -> 8 Hamburguesas)
+app.post('/inventory/convert', async (req, res) => {
+  const { parent_product_id, quantity_to_produce, location_id } = req.body;
+  // quantity_to_produce: Cuántas hamburguesas quiero hacer
+  
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Obtener receta (ingredientes)
+    const components = await client.query(
+      'SELECT * FROM product_components WHERE parent_product_id = $1',
+      [parent_product_id]
+    );
+
+    if (components.rows.length === 0) {
+      // Si no tiene receta, tal vez es una conversión directa de UOM (Caja -> Unidades)
+      // Por simplicidad, asumiremos que es una producción estándar.
+      throw new Error('Este producto no tiene componentes definidos para producir.');
+    }
+
+    // 2. Descontar ingredientes (Raw Materials)
+    for (const comp of components.rows) {
+      const qtyNeeded = comp.quantity_required * quantity_to_produce;
+      
+      await client.query(`
+        INSERT INTO inventory_ledger (product_id, location_id, quantity, transaction_type, notes)
+        VALUES ($1, $2, $3, 'production_usage', $4)
+      `, [comp.child_product_id, location_id, -qtyNeeded, `Uso para producir ${quantity_to_produce} de ${parent_product_id}`]);
+      
+      // Actualizar cache de ingrediente
+      await client.query(`
+        UPDATE product_prices SET stock_quantity = (SELECT COALESCE(SUM(quantity), 0) FROM inventory_ledger WHERE product_id = $1) WHERE product_id = $1
+      `, [comp.child_product_id]);
+    }
+
+    // 3. Incrementar producto terminado
+    await client.query(`
+      INSERT INTO inventory_ledger (product_id, location_id, quantity, transaction_type, notes)
+      VALUES ($1, $2, $3, 'production_output', $4)
+    `, [parent_product_id, location_id, quantity_to_produce, 'Producción finalizada']);
+
+    // Actualizar cache de producto terminado
+    await client.query(`
+      UPDATE product_prices SET stock_quantity = (SELECT COALESCE(SUM(quantity), 0) FROM inventory_ledger WHERE product_id = $1) WHERE product_id = $1
+    `, [parent_product_id]);
+
+    await client.query('COMMIT');
+    res.json({ message: `Producción de ${quantity_to_produce} unidades completada.` });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// 4. Consultar Stock Detallado por Ubicación
+app.get('/inventory/stock/:product_id', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        l.name as location_name,
+        l.type as location_type,
+        COALESCE(SUM(il.quantity), 0) as current_stock,
+        u.abbreviation as uom
+      FROM locations l
+      LEFT JOIN inventory_ledger il ON l.id = il.location_id AND il.product_id = $1
+      LEFT JOIN products p ON p.id = $1
+      LEFT JOIN uoms u ON p.uom_id = u.id
+      GROUP BY l.id, l.name, l.type, u.abbreviation
+      HAVING COALESCE(SUM(il.quantity), 0) != 0
+    `, [req.params.product_id]);
+    
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -610,6 +828,26 @@ app.post('/orders', async (req, res) => {
         item.public_price || 0,
         item.published_price || 0
       ]);
+    }
+
+    // 5.1 Descontar Inventario (WMS)
+    // Registramos la salida de mercancía del "Almacén General" o "Tienda" (hardcoded por ahora, idealmente dinámico)
+    // Buscamos el ID de la ubicación 'store' o usamos una por defecto
+    const locRes = await client.query("SELECT id FROM locations WHERE type='store' LIMIT 1");
+    const storeLocationId = locRes.rows.length > 0 ? locRes.rows[0].id : null;
+
+    if (storeLocationId) {
+      for (const item of items) {
+        await client.query(`
+          INSERT INTO inventory_ledger (product_id, location_id, quantity, transaction_type, reference_id, notes)
+          VALUES ($1, $2, $3, 'sale', $4, 'Salida por venta online')
+        `, [item.product_id, storeLocationId, -item.quantity, order.id]);
+        
+        // Actualizar cache simple
+        await client.query(`
+          UPDATE product_prices SET stock_quantity = stock_quantity - $1 WHERE product_id = $2
+        `, [item.quantity, item.product_id]);
+      }
     }
 
     // 6. Registrar en Libro Contable (Ledger) - Entrada de Dinero
