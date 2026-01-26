@@ -94,7 +94,7 @@ app.get('/migrations', async (req, res) => {
 
       // Limpieza para recrear estructura (SOLO PARA DESARROLLO INICIAL)
       // En producción, usarías ALTER TABLE en lugar de DROP
-      await client.query('DROP TABLE IF EXISTS inventory_ledger, product_components, locations, uoms, ledger, order_items, orders, cart_items, sessions, product_media, product_prices, products, categories CASCADE');
+      await client.query('DROP TABLE IF EXISTS cash_shifts, inventory_ledger, product_components, locations, uoms, ledger, order_items, orders, cart_items, sessions, product_media, product_prices, products, categories CASCADE');
 
       // 1. Tabla Categories
       await client.query(`
@@ -228,6 +228,7 @@ app.get('/migrations', async (req, res) => {
         CREATE TABLE IF NOT EXISTS orders (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           session_id UUID REFERENCES sessions(id),
+          location_id UUID REFERENCES locations(id), -- Identifica la sucursal de venta
           total_amount NUMERIC(10, 2) NOT NULL DEFAULT 0,
           received_amount NUMERIC(10, 2) DEFAULT 0, -- Cantidad recibida (ej. pago con billete de 500)
           status VARCHAR(50) DEFAULT 'created', -- created, processing, completed, cancelled
@@ -301,6 +302,23 @@ app.get('/migrations', async (req, res) => {
           reference_id UUID, -- ID de orden, ID de transferencia, etc.
           notes TEXT,
           created_at BIGINT DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
+        );
+      `);
+
+      // 12. Tabla Cash Shifts (Cortes de Caja / Turnos) - SUGERENCIA
+      // Permite controlar la apertura y cierre de caja por cajero/sucursal
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS cash_shifts (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          location_id UUID REFERENCES locations(id),
+          user_identifier VARCHAR(100), -- Usuario que abre la caja
+          start_amount NUMERIC(10, 2) DEFAULT 0, -- Fondo inicial
+          end_amount NUMERIC(10, 2) DEFAULT 0, -- Monto declarado al cierre
+          system_amount NUMERIC(10, 2) DEFAULT 0, -- Monto calculado por el sistema
+          difference NUMERIC(10, 2) DEFAULT 0, -- Diferencia (Sobrante/Faltante)
+          status VARCHAR(50) DEFAULT 'open', -- open, closed
+          opened_at BIGINT DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT,
+          closed_at BIGINT
         );
       `);
 
@@ -925,7 +943,7 @@ app.delete('/cart/:id', async (req, res) => {
 
 // Crear Orden desde Carrito (Checkout)
 app.post('/orders', async (req, res) => {
-  const { session_id, payment_method, received_amount } = req.body;
+  const { session_id, payment_method, received_amount, location_id } = req.body;
   const client = await pool.connect();
   
   try {
@@ -954,10 +972,10 @@ app.post('/orders', async (req, res) => {
 
     // 3. Crear la Orden
     const orderRes = await client.query(`
-      INSERT INTO orders (session_id, total_amount, received_amount, payment_method, status, payment_status, created_at)
-      VALUES ($1, $2, $3, $4, 'created', 'pending', $5)
+      INSERT INTO orders (session_id, location_id, total_amount, received_amount, payment_method, status, payment_status, created_at)
+      VALUES ($1, $2, $3, $4, $5, 'created', 'pending', $6)
       RETURNING *
-    `, [session_id, totalAmount, received_amount || totalAmount, payment_method || 'cash', Date.now()]);
+    `, [session_id, location_id || null, totalAmount, received_amount || totalAmount, payment_method || 'cash', Date.now()]);
     
     const order = orderRes.rows[0];
 
@@ -981,16 +999,20 @@ app.post('/orders', async (req, res) => {
     }
 
     // 5.1 Descontar Inventario (WMS)
-    // Registramos la salida de mercancía del "Almacén General" o "Tienda" (hardcoded por ahora, idealmente dinámico)
-    // Buscamos el ID de la ubicación 'store' o usamos una por defecto
-    const locRes = await client.query("SELECT id FROM locations WHERE type='store' LIMIT 1");
-    const storeLocationId = locRes.rows.length > 0 ? locRes.rows[0].id : null;
+    // Registramos la salida de mercancía de la sucursal específica
+    let storeLocationId = location_id;
+    
+    // Si no se envió ubicación, buscamos una por defecto (fallback)
+    if (!storeLocationId) {
+      const locRes = await client.query("SELECT id FROM locations WHERE type='store' LIMIT 1");
+      storeLocationId = locRes.rows.length > 0 ? locRes.rows[0].id : null;
+    }
 
     if (storeLocationId) {
       for (const item of items) {
         await client.query(`
           INSERT INTO inventory_ledger (product_id, location_id, quantity, transaction_type, reference_id, notes)
-          VALUES ($1, $2, $3, 'sale', $4, 'Salida por venta online')
+          VALUES ($1, $2, $3, 'sale', $4, 'Salida por venta')
         `, [item.product_id, storeLocationId, -item.quantity, order.id]);
         
         // Actualizar cache simple
